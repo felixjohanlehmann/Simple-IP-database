@@ -1,0 +1,1142 @@
+--VIEWS
+
+CREATE OR REPLACE VIEW ALL_STATUS_VW (IP_ID,KEYWORD,STATUS,STATUS_DATUM) AS
+SELECT A."IP_ID",
+       A."KEYWORD",
+       C."STATUS_TYPE",
+       B."DATE_STATUS"
+FROM E_IP_OBJECT A
+JOIN E_STATUS B ON A."IP_ID" = B."IP_ID"
+JOIN M_STATUS_TYPE C ON B."STATUS_TYPE_ID" = C."STATUS_TYPE_ID"
+ORDER BY "IP_ID";
+
+CREATE OR REPLACE VIEW COSTS_FORECAST_LIST_VW ("IP_ID", "FAMILY_ID", "COUNTRY CODE", "PUBLICATION NUMBER", "KEYWORD", "TITLE", "DATE OF FILING", "INVENTORLIST", "STATUS", "DATE OF STATUS", "FORECAST", "CURRENCY", "COST TYPE") AS
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION LIKE 'Renewal fee%' --Limits the results to the renewal fees
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,13)) - 1) * 100) + 1 --selects the right renewal fee depending on the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,13)) - 2) * 100) + 1 --selects the right renewal fee depending on the filing date
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION LIKE 'Patent Attorney: Paying Renewal fee%' --Limits the results to the costs, which are related to the payment of renewal fees
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,37)) - 1) * 100) + 1 --selects the right renewal fee payment depending on the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,37)) - 2) * 100) + 1 --selects the right renewal fee payment depending on the filing date
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < 201 --examination and designation fee payment the latest 24 months from the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > 106 --examination and designation fee payment the earliest 18 months from the filing date
+AND (COSTS_DESCRIPTION LIKE '%Examination %' --Limits the results to the costs, which are related to the payment of examination fees
+OR COSTS_DESCRIPTION LIKE '%Designation%') --Limits the results to the costs, which are related to the payment of designation fees
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION NOT LIKE '%Renewal fee%' --Limits the results to the costs, which are NOT renewal fees
+AND COSTS_DESCRIPTION NOT LIKE '%Designation%' --Limits the results to the costs, which are NOT related to the payment of renewal fees
+AND COSTS_DESCRIPTION NOT LIKE '%Examination%' --Limits the results to the costs, which are NOT related to the payment of renewal fees
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ORDER BY IP_ID;
+
+CREATE OR REPLACE VIEW COSTS_FORECAST_UNFILED_VW ("IP_ID", "FAMILY_ID", "COUNTRY CODE", "PUBLICATION NUMBER", "KEYWORD", "TITLE", "DATE OF FILING", "INVENTORLIST", "STATUS", "DATE OF STATUS","FORECAST", "CURRENCY", "COST TYPE") AS
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       NULL,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID
+   WHERE MAX_TYPE_ID < 5) B ON A.IP_ID = B.IP_ID --IMPORTANT: only "JOIN" instead of "LEFT JOIN" here and in the surrounding JOIN-structure in combination with a MAX_TYPE_ID smaller than 5 limits this list to own inventions, because competitors' inventions don't have entries in E_STATUS with a MAX_TYPE_ID smaller than 5
+ -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+ -- wherein the list is limited to entries which have a MAX_TYPE_ID smaller than 5
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT P.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) P) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID) U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the UNFILED_VW
+ORDER BY IP_ID;
+
+
+--COSTS_FORECAST_VW is a combination of COSTS_FORECAST_LIST_VW and COSTS_FORECAST_UNFILED_VW
+CREATE OR REPLACE VIEW COSTS_FORECAST_VW ("IP_ID", "FAMILY_ID", "COUNTRY CODE", "PUBLICATION NUMBER", "KEYWORD", "TITLE", "DATE OF FILING", "INVENTORLIST", "STATUS", "DATE OF STATUS", "FORECAST", "CURRENCY", "COST TYPE") AS
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION LIKE 'Renewal fee%' --Limits the results to the renewal fees
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,13)) - 1) * 100) + 1 --selects the right renewal fee depending on the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,13)) - 2) * 100) + 1 --selects the right renewal fee depending on the filing date
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION LIKE 'Patent Attorney: Paying Renewal fee%' --Limits the results to the costs, which are related to the payment of renewal fees
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,37)) - 1) * 100) + 1 --selects the right renewal fee payment depending on the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > ((TO_NUMBER(SUBSTR(U.COSTS_DESCRIPTION,37)) - 2) * 100) + 1 --selects the right renewal fee payment depending on the filing date
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) < 201 --examination and designation fee payment the latest 24 months from the filing date
+AND to_number(TO_CHAR(SYSDATE,'yyyymm')) - SUBSTR(L.DATE_STATUS,0,6) > 106 --examination and designation fee payment the earliest 18 months from the filing date
+AND (COSTS_DESCRIPTION LIKE '%Examination %' --Limits the results to the costs, which are related to the payment of examination fees
+OR COSTS_DESCRIPTION LIKE '%Designation%') --Limits the results to the costs, which are related to the payment of designation fees
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID)U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the LIST_VW
+
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+AND COSTS_DESCRIPTION NOT LIKE '%Renewal fee%' --Limits the results to the costs, which are NOT renewal fees
+AND COSTS_DESCRIPTION NOT LIKE '%Designation%' --Limits the results to the costs, which are NOT related to the payment of renewal fees
+AND COSTS_DESCRIPTION NOT LIKE '%Examination%' --Limits the results to the costs, which are NOT related to the payment of renewal fees
+AND J."PERSON_ID" in (4,5,14,16) -- this "where-clause" narrows the list to IP-Objects which have Unna as the assignee,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+ 
+UNION ALL
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       NULL,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       U.AMOUNT,
+       U.CURRENCY_ISO_CODE_ALPHA,
+       U.COSTS_DESCRIPTION
+FROM E_IP_OBJECT A
+JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID
+   WHERE MAX_TYPE_ID < 5) B ON A.IP_ID = B.IP_ID --IMPORTANT: only "JOIN" instead of "LEFT JOIN" here and in the surrounding JOIN-structure in combination with a MAX_TYPE_ID smaller than 5 limits this list to own inventions, because competitors' inventions don't have entries in E_STATUS with a MAX_TYPE_ID smaller than 5
+ -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+ -- wherein the list is limited to entries which have a MAX_TYPE_ID smaller than 5
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+            string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+ -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT P.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+               MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) P) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+JOIN
+  (SELECT R.CODE,
+          S.STATUS_TYPE,
+          R.AMOUNT,
+          T.CURRENCY_ISO_CODE_ALPHA,
+          V.COSTS_DESCRIPTION
+   FROM E_COSTS_FORECAST R
+   JOIN M_STATUS_TYPE S ON R.STATUS_TYPE_ID = S.STATUS_TYPE_ID
+   JOIN M_CURRENCY_ISO_CODE T ON T.CURRENCY_ISO_CODE = R.CURRENCY_ISO_CODE
+   JOIN M_COSTS_TYPE V ON V.COSTS_TYPE_ID = R.COSTS_TYPE_ID) U ON A.CODE = U.CODE
+AND B.STATUS_TYPE = U.STATUS_TYPE --Adds the cost forecast information to the "backbone" of the UNFILED_VW
+ORDER BY IP_ID;
+
+CREATE OR REPLACE VIEW COSTS_OVERVIEW_VW (IP_ID,AMOUNT,CURRENCY_ISO_CODE_ALPHA,ASSIGNEE,COST_DESCRIPTION,DATE_COSTS_DUE) AS
+SELECT a.ip_id,
+       a.amount,
+       e.currency_iso_code_alpha,
+       c.name_second,
+       d.costs_description,
+       a.date_costs_due
+FROM E_COSTS A
+LEFT JOIN E_ASSIGNEE B ON A.IP_ID = B.IP_ID
+LEFT JOIN M_PERSON C ON B.PERSON_ID = C.PERSON_ID
+LEFT JOIN M_COSTS_TYPE D ON A.COSTS_TYPE_ID = D.COSTS_TYPE_ID
+LEFT JOIN M_CURRENCY_ISO_CODE e ON a.currency_iso_code = e.currency_iso_code
+ORDER BY a.date_costs_due asc;
+
+
+CREATE OR REPLACE VIEW EXTERNAL_REFERENCE_VW (IP_ID,EXTERNAL_REFERENCE,EXTERNAL_REFERENCE_TYPE_ID,PERSON_ID,NAME_SECOND) AS
+SELECT A.IP_ID,
+       A.EXTERNAL_REFERENCE,
+       B.EXTERNAL_REFERENCE_TYPE,
+       A.PERSON_ID,
+       C.NAME_SECOND
+FROM E_EXTERNAL_REFERENCE A
+JOIN M_EXTERNAL_REFERENCE_TYPE B ON A.EXTERNAL_REFERENCE_TYPE_ID = B.EXTERNAL_REFERENCE_TYPE_ID
+JOIN M_PERSON C ON A.PERSON_ID = C.PERSON_ID
+ORDER BY EXTERNAL_REFERENCE ASC;
+
+CREATE OR REPLACE VIEW EXTERNAL_COMPANY_VW AS
+SELECT * 
+FROM M_PERSON
+WHERE PERSON_TYPE_ID = 6;
+
+
+CREATE OR REPLACE VIEW FAMILY_VW (FAMILY_ID,IP_ID,CODE,KEYWORD) AS
+SELECT "FAMILY_ID",
+       "IP_ID",
+       "CODE",
+       "KEYWORD"
+FROM E_IP_OBJECT
+ORDER BY "FAMILY_ID";
+
+CREATE OR REPLACE VIEW INVENTION_DISCLOSURES_VW (IP_ID, DATE_STATUS, ASSIGNEE, KEYWORD) AS
+SELECT a.ip_id,
+       a.date_status,
+       c.name_second,
+       e.keyword
+FROM E_STATUS A
+LEFT JOIN E_ASSIGNEE B ON A.IP_ID = B.IP_ID
+LEFT JOIN M_PERSON C ON B.PERSON_ID = C.PERSON_ID
+LEFT JOIN e_ip_object d ON a.ip_id = d.ip_id
+LEFT JOIN e_patent_family e on d.family_id = e.family_id
+WHERE A.DATE_STATUS > 20110101
+  AND A.STATUS_TYPE_ID = 1
+ORDER BY A.DATE_STATUS ASC;
+
+CREATE OR REPLACE VIEW INVENTORS_VW ("PERCENTAGE_SUM","INVENTOR_NAME") AS
+SELECT SUM(A."PERCENTAGE"), B."NAME_SECOND"
+FROM E_INVENTOR A
+JOIN M_PERSON B ON A."PERSON_ID" = B."PERSON_ID"
+WHERE B."PERSON_TYPE_ID" in (1, 2)
+GROUP BY B."NAME_SECOND"
+ORDER BY SUM(A."PERCENTAGE") DESC;
+
+
+CREATE OR REPLACE VIEW KEYWORDS_VW ("IP_ID", "CODE", "KEYWORD") AS
+SELECT A.IP_ID, A.CODE, A.KEYWORD
+FROM E_IP_OBJECT A
+--WHERE A.CODE IN ('01','02','03','04','05')
+ORDER BY A.KEYWORD ASC;
+
+CREATE OR REPLACE VIEW LIST_VW ("IP_ID", "FAMILY_ID", "COUNTRY CODE", "PUBLICATION NUMBER", "APPLICATION NUMBER", "KEYWORD", "TITLE", "DATE OF FILING", "INVENTORLIST", "STATUS", "DATE OF STATUS", "COST CENTER", "EXTERNAL_REFERENCE") AS
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.APPLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       L.DATE_STATUS,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE,
+       N.COST_CENTER_ID,
+       P.EXTERNAL_REFERENCE
+FROM E_IP_OBJECT A
+LEFT JOIN
+  (SELECT H.STATUS_TYPE,
+          G.IP_ID
+   FROM
+     (SELECT F.IP_ID,
+             MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID) B ON A.IP_ID = B.IP_ID -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+ -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+LEFT JOIN
+  (SELECT K.IP_ID,
+          K.DATE_STATUS
+   FROM E_STATUS K
+   WHERE STATUS_TYPE_ID IN (5,
+                            14)) L ON A.IP_ID = L.IP_ID -- L gives a list of the date of the status (DATE_STATUS) of every IP_ID which has a STATUS_TYPE_ID of 5 or 14
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+          string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+   -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT M.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+     (SELECT F.IP_ID,
+             MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) M) -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+I ON A.IP_ID = I.IP_ID -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+LEFT JOIN E_ASSIGNEE D ON A.IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON J ON D."PERSON_ID" = J."PERSON_ID"
+LEFT JOIN E_COST_CENTER N ON A.IP_ID = N.IP_ID
+LEFT JOIN (SELECT * FROM E_EXTERNAL_REFERENCE O
+WHERE O.PERSON_ID = 143) P ON A.IP_ID = P.IP_ID
+WHERE J."PERSON_TYPE_ID" = 4 -- this "where-clause" narrows the list to IP-Objects which have an assignee of the PERSON_TYPE_ID 4,
+ -- that means unfiled inventions are not in this list, because they do not have an entry in E_ASSIGNEE
+
+
+
+------some confidential lines omitted here :-)
+
+
+
+CREATE OR REPLACE VIEW NDA_VW ("IP_ID", "KEYWORD", "Contracting Parties") AS
+SELECT DISTINCT A.IP_ID,
+                A.KEYWORD,
+                D.COUNTERPARTY_LIST
+FROM E_IP_OBJECT A
+LEFT JOIN E_COUNTERPARTY B ON A.IP_ID = B.IP_ID
+LEFT JOIN M_PERSON C ON B.PERSON_ID = C.PERSON_ID
+LEFT JOIN
+  (SELECT E.IP_ID,
+          string_agg(E.NAME_SECOND) AS COUNTERPARTY_LIST
+   FROM
+     (SELECT G.IP_ID,
+             I.NAME_SECOND
+      FROM E_IP_OBJECT G
+      LEFT JOIN E_COUNTERPARTY H ON G.IP_ID = H.IP_ID
+      LEFT JOIN M_PERSON I ON H.PERSON_ID = I.PERSON_ID
+      WHERE G.CODE = '03') E
+   GROUP BY IP_ID) D ON A.IP_ID = D.IP_ID
+WHERE A.CODE = '03'
+AND A.IP_ID != 20126733 --Ausschluss des Aktenzeichens "2012_6733", da dieses keinen NDA sondern nur eine Vorlage betrifft.
+ORDER BY A.IP_ID;
+
+
+CREATE OR REPLACE VIEW OBSERVATION_AU_VW ("SEARCH-STRING: NU=(...)") AS
+SELECT CONCAT(PUBLICATION_NUMBER, ' OR ')
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1
+  AND CODE = 'AU';
+
+CREATE OR REPLACE VIEW OBSERVATION_CA_VW ("URL") AS
+SELECT CONCAT(CONCAT('http://brevets-patents.ic.gc.ca/opic-cipo/cpd/eng/patent/', PUBLICATION_NUMBER), '/financial_transactions.html?type=number_search')
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1
+  AND CODE = 'CA';
+
+CREATE OR REPLACE VIEW OBSERVATION_DE_VW ("SEARCH-STRING: AKZ =(...)") AS
+SELECT CONCAT(PUBLICATION_NUMBER, ' ODER ')
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1
+  AND CODE = 'DE';
+
+CREATE OR REPLACE VIEW OBSERVATION_EP_VW ("Application number","IP_ID") AS
+SELECT APPLICATION_NUMBER,
+       IP_ID
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1
+  AND CODE = 'EP'
+ORDER BY APPLICATION_NUMBER;
+
+CREATE OR REPLACE VIEW OBSERVATION_FAMILIES_VW ("FAMILY_ID") AS
+SELECT DISTINCT FAMILY_ID
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1;
+
+CREATE OR REPLACE VIEW OBSERVATION_VW ("Code+Publication_Number_Patent","Code+Publication_Number","Code+Application_Number", "Application_Number",FAMILY_ID, IP_ID, KEYWORD) AS
+SELECT CONCAT(CODE,PUBLICATION_NUMBER_PATENT) AS "Code+Publication_Number_Patent", CONCAT(CODE,PUBLICATION_NUMBER) AS "Code+Publication_Number", CONCAT(CODE,APPLICATION_NUMBER) AS "Code+Application_Number", APPLICATION_NUMBER, FAMILY_ID, IP_ID, KEYWORD
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1
+ORDER BY "Code+Publication_Number" ASC;
+
+CREATE OR REPLACE VIEW OBSERVATION_WO_VW ("SEARCH-STRING: FP:(...)") AS
+SELECT CONCAT('wo/', CONCAT(PUBLICATION_NUMBER, ' or '))
+FROM E_IP_OBJECT
+WHERE OBSERVATION_FLAG = 1 AND CODE = 'WO';
+
+
+CREATE OR REPLACE VIEW OWN_APPL_STATUS_OVERVIEW_VW ("STATUS", "QUANTITY") AS
+SELECT B.STATUS_TYPE, COUNT(B.STATUS_TYPE)
+FROM
+  (SELECT A.IP_ID AS C_IP_ID, MAX(A.STATUS_TYPE_ID) AS MAX_TYPE_ID
+   FROM E_STATUS A
+   GROUP BY A.IP_ID) C
+JOIN M_STATUS_TYPE B ON C.MAX_TYPE_ID = B.STATUS_TYPE_ID
+LEFT JOIN E_ASSIGNEE D ON C.C_IP_ID = D."IP_ID"
+LEFT JOIN M_PERSON E ON D."PERSON_ID" = E."PERSON_ID" 
+WHERE E."PERSON_TYPE_ID" = 4
+GROUP BY B.STATUS_TYPE
+ORDER BY COUNT(B.STATUS_TYPE) DESC;
+
+CREATE OR REPLACE VIEW OWN_APPL_STATUS_VW (IP_ID,KEYWORD,STATUS,STATUS_DATUM) AS
+SELECT A."IP_ID",
+       A."KEYWORD",
+       C."STATUS_TYPE",
+       B."DATE_STATUS"
+FROM E_IP_OBJECT A
+JOIN E_STATUS B ON A."IP_ID" = B."IP_ID"
+JOIN M_STATUS_TYPE C ON B."STATUS_TYPE_ID" = C."STATUS_TYPE_ID"
+LEFT JOIN E_ASSIGNEE D ON A."IP_ID" = D."IP_ID"
+LEFT JOIN M_PERSON E ON D."PERSON_ID" = E."PERSON_ID"
+WHERE E."PERSON_TYPE_ID" = 4
+ORDER BY "IP_ID";
+
+CREATE OR REPLACE VIEW OWN_APPL_STATUS_VW_ISABEL (IP_ID,FAMILY_ID,KEYWORD,STATUS,STATUS_DATUM) AS
+SELECT A."IP_ID",
+       A.FAMILY_ID,
+       A."KEYWORD",
+       C."STATUS_TYPE",
+       B."DATE_STATUS"
+FROM E_IP_OBJECT A
+JOIN E_STATUS B ON A."IP_ID" = B."IP_ID"
+JOIN M_STATUS_TYPE C ON B."STATUS_TYPE_ID" = C."STATUS_TYPE_ID"
+LEFT JOIN E_ASSIGNEE D ON A."IP_ID" = D."IP_ID"
+LEFT JOIN M_PERSON E ON D."PERSON_ID" = E."PERSON_ID"
+WHERE E."PERSON_TYPE_ID" = 4
+ORDER BY "IP_ID";
+
+CREATE OR REPLACE VIEW OWN_DE_REGISTER_VW ("SEARCH-STRING: AKZ =(...)") AS
+SELECT CONCAT(PUBLICATION_NUMBER, ' ODER ')
+FROM E_IP_OBJECT A
+LEFT JOIN E_ASSIGNEE B ON A.IP_ID = B."IP_ID"
+LEFT JOIN M_PERSON C ON B."PERSON_ID" = C."PERSON_ID" 
+WHERE C."PERSON_TYPE_ID" = 4
+  AND CODE = 'DE';
+
+CREATE OR REPLACE VIEW OWN_FAMILY_VW (FAMILY_ID,IP_ID,CODE,KEYWORD) AS
+SELECT A."FAMILY_ID",
+       A."IP_ID",
+       A."CODE",
+       A."KEYWORD"
+FROM E_IP_OBJECT A
+LEFT JOIN E_ASSIGNEE B ON A.IP_ID = B."IP_ID"
+LEFT JOIN M_PERSON C ON B."PERSON_ID" = C."PERSON_ID" 
+WHERE C."PERSON_TYPE_ID" = 4
+  AND A.FAMILY_ID IS NOT NULL
+ORDER BY A."FAMILY_ID";
+
+
+CREATE OR REPLACE VIEW REMUNERATION_DETAILS_VW ("IP_ID", "Amount", "Currency", "Name", "Due Date") AS
+SELECT A.IP_ID,
+       A.AMOUNT,
+       C.CURRENCY_ISO_CODE_ALPHA,
+       B.NAME_SECOND,
+       A.DATE_COSTS_DUE
+FROM E_COSTS A
+LEFT JOIN M_PERSON B ON A.PERSON_ID = B.PERSON_ID
+LEFT JOIN M_CURRENCY_ISO_CODE C ON A.CURRENCY_ISO_CODE = C.CURRENCY_ISO_CODE
+WHERE A.COSTS_TYPE_ID IN (1,
+                          2,
+                          3,
+                          4)
+ORDER BY A.DATE_COSTS_DUE ASC;
+
+  
+CREATE OR REPLACE VIEW REMUNERATION_PER_INVENTOR_VW ("INVENTOR", "INVENTOR_repeated", "EUR", "USD") AS
+SELECT D.NAME_SECOND,
+       C.NAME_SECOND,
+       EUR_AMOUNT,
+       USD_AMOUNT
+FROM
+  (SELECT E.NAME_SECOND,
+          SUM(A.AMOUNT) AS EUR_AMOUNT
+   FROM E_COSTS A
+   LEFT JOIN M_PERSON E ON A.PERSON_ID = E.PERSON_ID
+   WHERE A.CURRENCY_ISO_CODE = 978
+   AND A.COSTS_TYPE_ID IN (1,
+                          2,
+                          3,
+                          4)
+   GROUP BY E.NAME_SECOND) D 
+FULL JOIN
+  (SELECT F.NAME_SECOND,
+          SUM(B.AMOUNT) AS USD_AMOUNT
+   FROM E_COSTS B
+   LEFT JOIN M_PERSON F ON B.PERSON_ID = F.PERSON_ID
+   WHERE B.CURRENCY_ISO_CODE = 840
+   AND B.COSTS_TYPE_ID IN (1,
+                          2,
+                          3,
+                          4)
+   GROUP BY F.NAME_SECOND) C ON D.NAME_SECOND = C.NAME_SECOND
+   ORDER BY D.NAME_SECOND;
+
+CREATE OR REPLACE VIEW REMUNERATION_TOTAL_VW ("TEST", "EUR", "USD") AS
+SELECT D.AMOUNT,
+       EUR_TOTAL,
+       USD_TOTAL
+FROM
+  (SELECT 'AMOUNT' AS AMOUNT,
+          SUM(A.AMOUNT) AS EUR_TOTAL
+   FROM E_COSTS A
+   WHERE A.CURRENCY_ISO_CODE = 978 --GROUP BY 'TEST1'
+   AND A.COSTS_TYPE_ID IN (1,
+                          2,
+                          3,
+                          4)
+   ) D
+FULL JOIN
+  (SELECT 'AMOUNT' AS AMOUNT,
+          SUM(B.AMOUNT) AS USD_TOTAL
+   FROM E_COSTS B
+   WHERE B.CURRENCY_ISO_CODE = 840 --GROUP BY 'AMOUNT'
+   AND B.COSTS_TYPE_ID IN (1,
+                          2,
+                          3,
+                          4)
+   ) C 
+   ON D.AMOUNT = C.AMOUNT;
+
+CREATE OR REPLACE VIEW TAG_VW ("IP_ID", "FAMILY_ID", "KEYWORD", "TAG_DESCRIPTION") AS
+SELECT B.IP_ID,
+       A.FAMILY_ID,
+       B.KEYWORD,
+       C.TAG_DESCRIPTION
+FROM E_TAGS A
+LEFT JOIN E_IP_OBJECT B ON A.FAMILY_ID = B.FAMILY_ID
+LEFT JOIN M_TAG_DESCRIPTION C ON A.TAG_ID = C.TAG_ID;
+
+CREATE OR REPLACE VIEW TAG_OVERVIEW_VW ("TAG_DESCRIPTION", "QUANTITY") AS
+SELECT C.TAG_DESCRIPTION, COUNT(C.TAG_DESCRIPTION)
+FROM E_TAGS A
+LEFT JOIN E_IP_OBJECT B ON A.FAMILY_ID = B.FAMILY_ID
+LEFT JOIN M_TAG_DESCRIPTION C ON A.TAG_ID = C.TAG_ID
+GROUP BY C.TAG_DESCRIPTION;
+
+   
+CREATE OR REPLACE VIEW UNFILED_VW ("IP_ID", "FAMILY_ID", "COUNTRY CODE", "PUBLICATION NUMBER", "KEYWORD", "TITLE", "DATE OF FILING", "INVENTORLIST", "STATUS", "DATE OF STATUS") AS
+SELECT A.IP_ID,
+       A.FAMILY_ID,
+       A.CODE,
+       A.PUBLICATION_NUMBER,
+       A.KEYWORD,
+       A.TITLE_APPLICATION,
+       NULL,
+       INVENTORLIST,
+       B.STATUS_TYPE,
+       MAX_STATUS_DATE
+FROM E_IP_OBJECT A
+JOIN
+  (SELECT H.STATUS_TYPE, G.IP_ID
+   FROM
+     (SELECT F.IP_ID,  MAX(F.STATUS_TYPE_ID) AS MAX_TYPE_ID
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) G
+      -- G gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS 
+   JOIN M_STATUS_TYPE H ON G.MAX_TYPE_ID = H.STATUS_TYPE_ID
+   WHERE MAX_TYPE_ID < 5) B ON A.IP_ID = B.IP_ID --IMPORTANT: only "JOIN" instead of "LEFT JOIN" here and in the surrounding JOIN-structure in combination with a MAX_TYPE_ID smaller than 5 limits this list to own inventions, because competitors' inventions don't have entries in E_STATUS with a MAX_TYPE_ID smaller than 5
+   -- B gives a list of the maximum STATUS_TYPE for every IP_ID which has an entry in E_STATUS
+   -- by taking G and replacing the STATUS_TYPE_ID with the corresponding STATUS_TYPE stored in M_STATUS_TYPE
+   -- wherein the list is limited to entries which have a MAX_TYPE_ID smaller than 5
+LEFT JOIN
+  (SELECT N.FAMILY_ID,
+          string_agg(N.NAME_SECOND) AS INVENTORLIST
+   FROM
+     (SELECT L.FAMILY_ID,
+             M.NAME_SECOND
+      FROM
+        (SELECT FAMILY_ID,
+                PERSON_ID
+         FROM E_INVENTOR) L
+      LEFT JOIN M_PERSON M ON L.PERSON_ID= M.PERSON_ID) N
+   GROUP BY N.FAMILY_ID) O ON A.FAMILY_ID = O.FAMILY_ID -- O gives an agregated list of the Inventors for every FAMILY_ID
+   -- the function string_agg() is needed!!! (in Oracle 11g Release 2 the function LISTAGG() might be used)
+LEFT JOIN
+  (SELECT P.IP_ID,
+          MAX_STATUS_DATE
+   FROM
+    (SELECT F.IP_ID,  MAX(F.DATE_STATUS) AS MAX_STATUS_DATE
+      FROM E_STATUS F
+      GROUP BY F.IP_ID) P)
+      -- M gives a list of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS
+   I ON A.IP_ID = I.IP_ID
+   -- I gives a list of the date (MAX_STATUS_DATE) of the maximum STATUS_TYPE_ID for every IP_ID which has an entry in E_STATUS 
+ORDER BY IP_ID;
